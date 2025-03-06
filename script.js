@@ -138,76 +138,67 @@ function showCongratsScreen() {
 }
 
 // Функция для предзагрузки всех ресурсов
+// Обновленная функция предзагрузки
 function preloadAllResources() {
     return new Promise((resolve) => {
-        const totalResources = mediaData.length;
-        let loadedResources = 0;
+        const startTime = Date.now();
+        const minLoadingTime = 10000; // 10 секунд
         
-        // Предзагрузка медиа-элементов
-        mediaData.forEach((item, index) => {
-            if (item.type === 'image') {
-                const img = new Image();
-                img.src = item.src;
-                img.onload = () => {
-                    mediaElements[index] = img;
-                    loadedResources++;
-                    updateLoadingProgress(loadedResources, totalResources);
-                    if (loadedResources === totalResources) {
-                        allResourcesLoaded = true;
-                        resolve();
-                    }
-                };
-                img.onerror = () => {
-                    console.error("Ошибка загрузки изображения:", item.src);
-                    loadedResources++;
-                    updateLoadingProgress(loadedResources, totalResources);
-                    if (loadedResources === totalResources) {
-                        allResourcesLoaded = true;
-                        resolve();
-                    }
-                };
-            } else if (item.type === 'video') {
-                const video = document.createElement('video');
-                video.src = item.src;
-                video.muted = false;
-                video.preload = 'auto';
-                
-                // Исправляем кроссбраузерную совместимость
-                video.setAttribute('playsinline', '');
-                video.setAttribute('webkit-playsinline', '');
-                
-                // Событие при возможности воспроизведения
-                video.addEventListener('canplaythrough', function onCanPlay() {
-                    mediaElements[index] = video;
-                    loadedResources++;
-                    updateLoadingProgress(loadedResources, totalResources);
-                    if (loadedResources === totalResources) {
-                        allResourcesLoaded = true;
-                        resolve();
-                    }
-                    video.removeEventListener('canplaythrough', onCanPlay);
-                }, { once: true });
-                
-                video.addEventListener('error', () => {
-                    console.error("Ошибка загрузки видео:", item.src);
-                    loadedResources++;
-                    updateLoadingProgress(loadedResources, totalResources);
-                    if (loadedResources === totalResources) {
-                        allResourcesLoaded = true;
-                        resolve();
-                    }
-                });
-                
-                // Принудительная загрузка
-                video.load();
+        const finishLoading = () => {
+            const elapsed = Date.now() - startTime;
+            if(elapsed < minLoadingTime) {
+                setTimeout(resolve, minLoadingTime - elapsed);
+            } else {
+                resolve();
             }
-        });
+        };
+
+        const loadPromises = [];
         
-        // Если нет медиа-элементов, завершаем загрузку
-        if (totalResources === 0) {
-            allResourcesLoaded = true;
-            resolve();
+        mediaData.forEach((item, index) => {
+            const loader = new Promise((resolveItem) => {
+                if(item.type === 'image') {
+                    const img = new Image();
+                    img.src = item.src;
+                    img.decode().then(() => {
+                        mediaElements[index] = img;
+                        resolveItem();
+                    }).catch(() => resolveItem());
+                } else if(item.type === 'video') {
+                    const video = document.createElement('video');
+                    video.preload = 'auto';
+                    video.muted = true; // Предзагрузка с muted для оптимизации
+                    video.playsInline = true;
+                    video.src = item.src;
+                    
+                    video.addEventListener('loadeddata', () => {
+                        mediaElements[index] = video;
+                        resolveItem();
+                    }, { once: true });
+                    
+                    video.addEventListener('error', resolveItem);
+                    video.load();
+                }
+            });
+            
+            loadPromises.push(loader);
+        });
+
+        // Ограничение параллельных загрузок
+        const MAX_PARALLEL = 3;
+        const chunkedLoaders = [];
+        for(let i = 0; i < loadPromises.length; i += MAX_PARALLEL) {
+            chunkedLoaders.push(loadPromises.slice(i, i + MAX_PARALLEL));
         }
+
+        const sequentialLoad = async () => {
+            for(const chunk of chunkedLoaders) {
+                await Promise.allSettled(chunk);
+            }
+            finishLoading();
+        };
+
+        sequentialLoad();
     });
 }
 
@@ -487,7 +478,12 @@ function showCurrentMedia() {
         media.setAttribute('playsinline', '');
         media.setAttribute('webkit-playsinline', '');
         media.loop = true;
+        media.currentTime = 0;
         
+        media.setAttribute('preload', 'auto');
+        media.setAttribute('webkit-playsinline', '');
+        media.playsInline = true;
+
         // Блокировка контекстного меню
         media.oncontextmenu = (e) => {
             e.preventDefault();
