@@ -131,7 +131,7 @@ function showCongratsScreen() {
         document.querySelector('.intro-screen').style.display = 'none';
         document.querySelector('.congrats-screen').classList.add('visible');
         document.getElementById('nextBtn').style.display = 'block';
-        
+        allResourcesLoaded = true;
         // Увеличиваем интенсивность лепестков
         setInterval(createPetal, 600);
     }, 1000);
@@ -142,63 +142,58 @@ function showCongratsScreen() {
 function preloadAllResources() {
     return new Promise((resolve) => {
         const startTime = Date.now();
-        const minLoadingTime = 10000; // 10 секунд
-        
-        const finishLoading = () => {
-            const elapsed = Date.now() - startTime;
-            if(elapsed < minLoadingTime) {
-                setTimeout(resolve, minLoadingTime - elapsed);
-            } else {
-                resolve();
-            }
+        const minLoadingTime = 0;
+        let loadedResources = 0; // Добавляем счетчик
+        const totalResources = mediaData.length;
+
+        const updateProgress = () => {
+            loadedResources++;
+            updateLoadingProgress(loadedResources, totalResources); // Обновляем прогресс
         };
 
-        const loadPromises = [];
-        
-        mediaData.forEach((item, index) => {
-            const loader = new Promise((resolveItem) => {
-                if(item.type === 'image') {
+        const loadPromises = mediaData.map((item, index) => {
+            return new Promise((resolveItem) => {
+                if (item.type === 'image') {
                     const img = new Image();
-                    img.src = item.src;
-                    img.decode().then(() => {
+                    img.onload = () => {
                         mediaElements[index] = img;
+                        updateProgress();
                         resolveItem();
-                    }).catch(() => resolveItem());
-                } else if(item.type === 'video') {
+                    };
+                    img.onerror = () => {
+                        updateProgress();
+                        resolveItem();
+                    };
+                    img.src = item.src;
+                } else if (item.type === 'video') {
                     const video = document.createElement('video');
                     video.preload = 'auto';
-                    video.muted = true; // Предзагрузка с muted для оптимизации
-                    video.playsInline = true;
-                    video.src = item.src;
+                    video.muted = true;
+                    video.setAttribute('playsinline', '');
                     
-                    video.addEventListener('loadeddata', () => {
+                    const handleLoad = () => {
                         mediaElements[index] = video;
+                        updateProgress();
                         resolveItem();
-                    }, { once: true });
+                    };
                     
-                    video.addEventListener('error', resolveItem);
+                    video.addEventListener('loadeddata', handleLoad, { once: true });
+                    video.addEventListener('error', () => {
+                        updateProgress();
+                        resolveItem();
+                    });
+                    video.src = item.src;
                     video.load();
                 }
             });
-            
-            loadPromises.push(loader);
         });
 
-        // Ограничение параллельных загрузок
-        const MAX_PARALLEL = 3;
-        const chunkedLoaders = [];
-        for(let i = 0; i < loadPromises.length; i += MAX_PARALLEL) {
-            chunkedLoaders.push(loadPromises.slice(i, i + MAX_PARALLEL));
-        }
-
-        const sequentialLoad = async () => {
-            for(const chunk of chunkedLoaders) {
-                await Promise.allSettled(chunk);
-            }
-            finishLoading();
-        };
-
-        sequentialLoad();
+        // Загрузка всех ресурсов
+        Promise.all(loadPromises).then(() => {
+            const elapsed = Date.now() - startTime;
+            const remaining = Math.max(minLoadingTime - elapsed, 0);
+            setTimeout(resolve, remaining);
+        });
     });
 }
 
@@ -208,6 +203,9 @@ function updateLoadingProgress(loaded, total) {
     const progressElement = document.getElementById('loading-progress');
     if (progressElement) {
         progressElement.textContent = `${loadingProgress}%`;
+        // Добавим анимацию обновления
+        progressElement.style.transform = 'scale(1.1)';
+        setTimeout(() => progressElement.style.transform = '', 200);
     }
 }
 
@@ -456,10 +454,7 @@ function showCurrentMedia() {
     const container = document.getElementById('media-display');
     if (!container) return;
     
-    // Останавливаем предыдущее видео и очищаем контейнер
-    const previousVideo = container.querySelector('video');
-    if (previousVideo) previousVideo.pause();
-    container.innerHTML = '';
+    document.querySelectorAll('video').forEach(v => v.pause());
 
     // Проверяем, загружен ли элемент
     const mediaElement = mediaElements[currentMediaIndex];
@@ -469,26 +464,24 @@ function showCurrentMedia() {
     }
 
     const media = mediaElement.cloneNode(true);
-    media.classList.add('active');
+    container.innerHTML
 
     if (media.tagName === 'VIDEO') {
         // Настройки видео
         media.autoplay = true;
+        media.loop = true;
         media.muted = false;
         media.setAttribute('playsinline', '');
         media.setAttribute('webkit-playsinline', '');
-        media.loop = true;
-        media.currentTime = 0;
-        
-        media.setAttribute('preload', 'auto');
-        media.setAttribute('webkit-playsinline', '');
-        media.playsInline = true;
+        media.style.width = '100%';
 
         // Блокировка контекстного меню
         media.oncontextmenu = (e) => {
             e.preventDefault();
             return false;
         };
+
+        container.appendChild(media);
 
         // Приглушаем фоновую музыку при просмотре видео
         if (backgroundMusic && !backgroundMusic.paused) {
