@@ -62,6 +62,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Начинаем воспроизведение музыки по клику на страницу
     initializeAudio();
+    createMusicControls();
 
     // Эффект параллакса для звезд
     document.addEventListener('mousemove', (e) => {
@@ -544,18 +545,35 @@ let isMusicPlaying = false;
 
 function createMusicControls() {
     const musicBtn = document.getElementById('musicBtn');
-    
-    musicBtn.addEventListener('click', function() {
-        if(!backgroundMusic.paused) {
-            backgroundMusic.pause();
-            this.classList.remove('active');
-        } else {
-            backgroundMusic.play()
-                .then(() => this.classList.add('active'))
-                .catch(error => {
-                    console.error('Ошибка воспроизведения:', error);
-                    alert('Нажмите разрешить автовоспроизведение в браузере');
-                });
+    const musicError = document.getElementById('musicError');
+
+    musicBtn.addEventListener('click', async () => {
+        try {
+            if (backgroundMusic.paused) {
+                await backgroundMusic.play();
+                musicBtn.classList.add('active');
+                musicError.style.display = 'none';
+            } else {
+                backgroundMusic.pause();
+                musicBtn.classList.remove('active');
+            }
+        } catch (error) {
+            showMusicError('Нажмите здесь → и разрешите звук');
+            musicBtn.style.transform = 'scale(1.1)';
+            setTimeout(() => musicBtn.style.transform = '', 500);
         }
     });
+}
+
+function unlockAudio() {
+    if (isAudioAllowed) return;
+    
+    // Пустой проигрыш для разблокировки
+    backgroundMusic.play()
+        .then(() => {
+            backgroundMusic.pause();
+            isAudioAllowed = true;
+            document.getElementById('musicBtn').style.display = 'block';
+        })
+        .catch(error => showMusicError('Разрешите звук в браузере'));
 }
