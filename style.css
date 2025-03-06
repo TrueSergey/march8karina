@@ -842,3 +842,33 @@ body::after {
     0% { transform: rotate(0deg); }
     100% { transform: rotate(360deg); }
 }
+
+
+.music-toggle {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    padding: 10px 20px;
+    background: rgba(255, 111, 97, 0.2);
+    border: 2px solid rgba(255, 111, 97, 0.9);
+    border-radius: 30px;
+    color: white;
+    cursor: pointer;
+    z-index: 100;
+    transition: all 0.3s ease;
+}
+
+.music-toggle:hover {
+    background: rgba(255, 111, 97, 0.3);
+    box-shadow: 0 0 10px rgba(255, 111, 97, 0.5);
+}
+
+.music-toggle.active::after {
+    content: "♫";
+    margin-left: 8px;
+    animation: beat 0.5s ease infinite;
+}
+
+@keyframes beat {
+    50% { transform: scale(1.2); }
+}

@@ -539,3 +539,23 @@ function showCurrentMedia() {
         comment.classList.add('show');
     }, 300);
 }
+
+let isMusicPlaying = false;
+
+function createMusicControls() {
+    const musicBtn = document.getElementById('musicBtn');
+    
+    musicBtn.addEventListener('click', function() {
+        if(!backgroundMusic.paused) {
+            backgroundMusic.pause();
+            this.classList.remove('active');
+        } else {
+            backgroundMusic.play()
+                .then(() => this.classList.add('active'))
+                .catch(error => {
+                    console.error('Ошибка воспроизведения:', error);
+                    alert('Нажмите разрешить автовоспроизведение в браузере');
+                });
+        }
+    });
+}
