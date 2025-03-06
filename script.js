@@ -62,7 +62,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Начинаем воспроизведение музыки по клику на страницу
     initializeAudio();
-    createMusicControls();
 
     // Эффект параллакса для звезд
     document.addEventListener('mousemove', (e) => {
@@ -131,69 +130,83 @@ function showCongratsScreen() {
         document.querySelector('.intro-screen').style.display = 'none';
         document.querySelector('.congrats-screen').classList.add('visible');
         document.getElementById('nextBtn').style.display = 'block';
-        allResourcesLoaded = true;
+        
         // Увеличиваем интенсивность лепестков
         setInterval(createPetal, 600);
     }, 1000);
 }
 
 // Функция для предзагрузки всех ресурсов
-// Обновленная функция предзагрузки
 function preloadAllResources() {
     return new Promise((resolve) => {
-        const startTime = Date.now();
-        const minLoadingTime = 0;
-        let loadedResources = 0; // Добавляем счетчик
         const totalResources = mediaData.length;
-
-        const updateProgress = () => {
-            loadedResources++;
-            updateLoadingProgress(loadedResources, totalResources); // Обновляем прогресс
-        };
-
-        const loadPromises = mediaData.map((item, index) => {
-            return new Promise((resolveItem) => {
-                if (item.type === 'image') {
-                    const img = new Image();
-                    img.onload = () => {
-                        mediaElements[index] = img;
-                        updateProgress();
-                        resolveItem();
-                    };
-                    img.onerror = () => {
-                        updateProgress();
-                        resolveItem();
-                    };
-                    img.src = item.src;
-                } else if (item.type === 'video') {
-                    const video = document.createElement('video');
-                    video.preload = 'auto';
-                    video.muted = true;
-                    video.setAttribute('playsinline', '');
-                    
-                    const handleLoad = () => {
-                        mediaElements[index] = video;
-                        updateProgress();
-                        resolveItem();
-                    };
-                    
-                    video.addEventListener('loadeddata', handleLoad, { once: true });
-                    video.addEventListener('error', () => {
-                        updateProgress();
-                        resolveItem();
-                    });
-                    video.src = item.src;
-                    video.load();
-                }
-            });
+        let loadedResources = 0;
+        
+        // Предзагрузка медиа-элементов
+        mediaData.forEach((item, index) => {
+            if (item.type === 'image') {
+                const img = new Image();
+                img.src = item.src;
+                img.onload = () => {
+                    mediaElements[index] = img;
+                    loadedResources++;
+                    updateLoadingProgress(loadedResources, totalResources);
+                    if (loadedResources === totalResources) {
+                        allResourcesLoaded = true;
+                        resolve();
+                    }
+                };
+                img.onerror = () => {
+                    console.error("Ошибка загрузки изображения:", item.src);
+                    loadedResources++;
+                    updateLoadingProgress(loadedResources, totalResources);
+                    if (loadedResources === totalResources) {
+                        allResourcesLoaded = true;
+                        resolve();
+                    }
+                };
+            } else if (item.type === 'video') {
+                const video = document.createElement('video');
+                video.src = item.src;
+                video.muted = false;
+                video.preload = 'auto';
+                
+                // Исправляем кроссбраузерную совместимость
+                video.setAttribute('playsinline', '');
+                video.setAttribute('webkit-playsinline', '');
+                
+                // Событие при возможности воспроизведения
+                video.addEventListener('canplaythrough', function onCanPlay() {
+                    mediaElements[index] = video;
+                    loadedResources++;
+                    updateLoadingProgress(loadedResources, totalResources);
+                    if (loadedResources === totalResources) {
+                        allResourcesLoaded = true;
+                        resolve();
+                    }
+                    video.removeEventListener('canplaythrough', onCanPlay);
+                }, { once: true });
+                
+                video.addEventListener('error', () => {
+                    console.error("Ошибка загрузки видео:", item.src);
+                    loadedResources++;
+                    updateLoadingProgress(loadedResources, totalResources);
+                    if (loadedResources === totalResources) {
+                        allResourcesLoaded = true;
+                        resolve();
+                    }
+                });
+                
+                // Принудительная загрузка
+                video.load();
+            }
         });
-
-        // Загрузка всех ресурсов
-        Promise.all(loadPromises).then(() => {
-            const elapsed = Date.now() - startTime;
-            const remaining = Math.max(minLoadingTime - elapsed, 0);
-            setTimeout(resolve, remaining);
-        });
+        
+        // Если нет медиа-элементов, завершаем загрузку
+        if (totalResources === 0) {
+            allResourcesLoaded = true;
+            resolve();
+        }
     });
 }
 
@@ -203,9 +216,6 @@ function updateLoadingProgress(loaded, total) {
     const progressElement = document.getElementById('loading-progress');
     if (progressElement) {
         progressElement.textContent = `${loadingProgress}%`;
-        // Добавим анимацию обновления
-        progressElement.style.transform = 'scale(1.1)';
-        setTimeout(() => progressElement.style.transform = '', 200);
     }
 }
 
@@ -454,7 +464,10 @@ function showCurrentMedia() {
     const container = document.getElementById('media-display');
     if (!container) return;
     
-    document.querySelectorAll('video').forEach(v => v.pause());
+    // Останавливаем предыдущее видео и очищаем контейнер
+    const previousVideo = container.querySelector('video');
+    if (previousVideo) previousVideo.pause();
+    container.innerHTML = '';
 
     // Проверяем, загружен ли элемент
     const mediaElement = mediaElements[currentMediaIndex];
@@ -464,24 +477,21 @@ function showCurrentMedia() {
     }
 
     const media = mediaElement.cloneNode(true);
-    container.innerHTML
+    media.classList.add('active');
 
     if (media.tagName === 'VIDEO') {
         // Настройки видео
         media.autoplay = true;
-        media.loop = true;
         media.muted = false;
         media.setAttribute('playsinline', '');
         media.setAttribute('webkit-playsinline', '');
-        media.style.width = '100%';
-
+        media.loop = true;
+        
         // Блокировка контекстного меню
         media.oncontextmenu = (e) => {
             e.preventDefault();
             return false;
         };
-
-        container.appendChild(media);
 
         // Приглушаем фоновую музыку при просмотре видео
         if (backgroundMusic && !backgroundMusic.paused) {
@@ -528,41 +538,4 @@ function showCurrentMedia() {
         comment.textContent = mediaData[currentMediaIndex].comment;
         comment.classList.add('show');
     }, 300);
-}
-
-let isMusicPlaying = false;
-
-function createMusicControls() {
-    const musicBtn = document.getElementById('musicBtn');
-    const musicError = document.getElementById('musicError');
-
-    musicBtn.addEventListener('click', async () => {
-        try {
-            if (backgroundMusic.paused) {
-                await backgroundMusic.play();
-                musicBtn.classList.add('active');
-                musicError.style.display = 'none';
-            } else {
-                backgroundMusic.pause();
-                musicBtn.classList.remove('active');
-            }
-        } catch (error) {
-            showMusicError('Нажмите здесь → и разрешите звук');
-            musicBtn.style.transform = 'scale(1.1)';
-            setTimeout(() => musicBtn.style.transform = '', 500);
-        }
-    });
-}
-
-function unlockAudio() {
-    if (isAudioAllowed) return;
-    
-    // Пустой проигрыш для разблокировки
-    backgroundMusic.play()
-        .then(() => {
-            backgroundMusic.pause();
-            isAudioAllowed = true;
-            document.getElementById('musicBtn').style.display = 'block';
-        })
-        .catch(error => showMusicError('Разрешите звук в браузере'));
 }
